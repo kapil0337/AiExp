@@ -68,6 +68,51 @@ def test_login_success_sets_cookie_and_persists(monkeypatch):
     assert c.get("/api/summary").status_code == 200
 
 
+def test_new_user_starts_with_no_nickname(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "verify_google_id_token",
+        lambda credential: fake_claims("test@example.com"),
+    )
+    c = raw_client()
+    r = c.post("/api/auth/google", json={"credential": "whatever"})
+    assert r.json()["nickname"] == ""
+    assert c.get("/api/auth/me").json()["user"]["nickname"] == ""
+
+
+def test_set_nickname_requires_login():
+    r = raw_client().put("/api/auth/nickname", json={"nickname": "Kavi"})
+    assert r.status_code == 401
+
+
+def test_set_and_persist_nickname(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "verify_google_id_token",
+        lambda credential: fake_claims("test@example.com"),
+    )
+    c = raw_client()
+    c.post("/api/auth/google", json={"credential": "whatever"})
+
+    r = c.put("/api/auth/nickname", json={"nickname": "  Kavi  "})
+    assert r.status_code == 200
+    assert r.json()["nickname"] == "Kavi"
+
+    assert c.get("/api/auth/me").json()["user"]["nickname"] == "Kavi"
+
+
+def test_blank_nickname_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "verify_google_id_token",
+        lambda credential: fake_claims("test@example.com"),
+    )
+    c = raw_client()
+    c.post("/api/auth/google", json={"credential": "whatever"})
+
+    assert c.put("/api/auth/nickname", json={"nickname": "   "}).status_code == 422
+
+
 def test_remember_false_sets_a_browser_session_cookie(monkeypatch):
     """Unchecking "keep me signed in" should drop Max-Age so the cookie dies
     with the browser session instead of persisting for session_max_age_days."""

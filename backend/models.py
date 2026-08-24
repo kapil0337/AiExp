@@ -36,6 +36,9 @@ class User(Base):
     google_sub: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(160), default="")
+    # Self-chosen, distinct from `name` (Google's real name) — this is what
+    # Bloomie calls the user. Empty until set on first login.
+    nickname: Mapped[str] = mapped_column(String(40), default="")
     picture: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

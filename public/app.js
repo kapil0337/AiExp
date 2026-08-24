@@ -243,13 +243,40 @@ let gsiInitialized = false;
 
 function showLoginScreen() {
   $("#appShell").classList.add("is-hidden");
+  $("#nicknameGate").classList.add("is-hidden");
   $("#userBadge").classList.add("is-hidden");
   $("#authGate").classList.remove("is-hidden");
 }
 
+function showNicknameGate() {
+  $("#appShell").classList.add("is-hidden");
+  $("#authGate").classList.add("is-hidden");
+  $("#nicknameGate").classList.remove("is-hidden");
+  $("#nicknameInput").focus();
+}
+
 function showApp() {
   $("#authGate").classList.add("is-hidden");
+  $("#nicknameGate").classList.add("is-hidden");
   $("#appShell").classList.remove("is-hidden");
+}
+
+/** After we know who's signed in: first-timers (no nickname yet) get the
+ *  onboarding gate before they ever see the app; everyone else goes straight in. */
+async function enterApp() {
+  if (!state.user.nickname) {
+    showNicknameGate();
+  } else {
+    showApp();
+    await runApp();
+  }
+}
+
+async function saveNickname(nickname) {
+  const user = await api("/auth/nickname", { method: "PUT", body: { nickname } });
+  state.user = user;
+  renderUserBadge();
+  return user;
 }
 
 function renderUserBadge() {
@@ -306,8 +333,7 @@ async function handleGoogleCredential(response) {
     });
     state.user = user;
     renderUserBadge();
-    showApp();
-    await runApp();
+    await enterApp();
   } catch (err) {
     showFormError("#authError", err.message);
   }
@@ -824,6 +850,7 @@ function renderSettings() {
   $("#settingsAccountEmail").textContent = state.user
     ? `Signed in as ${state.user.email}`
     : "";
+  $("#settingsNickname").value = state.user?.nickname || "";
 }
 
 function syncCurrencySymbols() {
@@ -1256,6 +1283,35 @@ function wireEvents() {
   $("#logoutBtn").addEventListener("click", logout);
   $("#settingsLogoutBtn").addEventListener("click", logout);
 
+  // first-login onboarding: pick a nickname before entering the app
+  $("#nicknameForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nickname = $("#nicknameInput").value.trim();
+    if (!nickname) return showFormError("#nicknameError", "Give Bloomie something to call you 🥺");
+    showFormError("#nicknameError", "");
+    try {
+      await saveNickname(nickname);
+      showApp();
+      await runApp();
+    } catch (err) {
+      showFormError("#nicknameError", err.message);
+    }
+  });
+
+  // settings: edit the nickname later
+  $("#settingsNicknameForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nickname = $("#settingsNickname").value.trim();
+    if (!nickname) return showFormError("#settingsNicknameError", "Give Bloomie something to call you 🥺");
+    showFormError("#settingsNicknameError", "");
+    try {
+      await saveNickname(nickname);
+      toast("Nickname saved 💫");
+    } catch (err) {
+      showFormError("#settingsNicknameError", err.message);
+    }
+  });
+
   // repaint charts on resize (viewBox handles scale; labels need re-thinning)
   let rs;
   addEventListener("resize", () => {
@@ -1311,8 +1367,7 @@ async function boot() {
   if (auth.authenticated) {
     state.user = auth.user;
     renderUserBadge();
-    showApp();
-    await runApp();
+    await enterApp();
   } else {
     showLoginScreen();
     if (meta?.google_client_id) initGoogleSignIn(meta.google_client_id);

@@ -45,6 +45,7 @@ from .schemas import (
     ExpenseUpdate,
     GoogleLoginIn,
     MethodBreakdown,
+    NicknameIn,
     SplitIn,
     SplitOut,
     SplitUpdate,
@@ -602,7 +603,8 @@ def summary_only(db: DB, user: CurrentUser) -> Summary:
 
 @app.post("/api/vibe-check", response_model=VibeCheck)
 async def ai_vibe_check(db: DB, user: CurrentUser) -> VibeCheck:
-    return await vibe_check(build_summary(db, active_budget(db, user)))
+    summary = build_summary(db, active_budget(db, user))
+    return await vibe_check(summary, nickname=user.nickname or None)
 
 
 # ── who groups spend per person (used by the splits screen) ─────────────────
@@ -687,6 +689,14 @@ def auth_me(request: Request, db: DB) -> AuthMe:
         authenticated=user is not None,
         user=UserOut.from_model(user) if user else None,
     )
+
+
+@app.put("/api/auth/nickname", response_model=UserOut)
+def set_nickname(payload: NicknameIn, db: DB, user: CurrentUser) -> UserOut:
+    user.nickname = payload.nickname
+    db.commit()
+    db.refresh(user)
+    return UserOut.from_model(user)
 
 
 # ── errors ──────────────────────────────────────────────────────────────────

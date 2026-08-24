@@ -40,6 +40,24 @@
   </div>
 </div>
 
+<!-- ───────────── first-login nickname gate ───────────── -->
+<div class="auth-gate is-hidden" id="nicknameGate">
+  <div class="card auth-card">
+    <div class="brand-mark auth-mark" aria-hidden="true">💫</div>
+    <h1 class="auth-title">What should Bloomie call you?</h1>
+    <p class="auth-sub">Your nickname — Bloomie will use it for a personal touch</p>
+    <form id="nicknameForm" class="form" novalidate>
+      <div class="field">
+        <label for="nicknameInput">Nickname</label>
+        <input id="nicknameInput" type="text" maxlength="40"
+               placeholder="what should Bloomie call you?" required autocomplete="off" />
+      </div>
+      <p class="form-error is-hidden" id="nicknameError" role="alert"></p>
+      <button class="btn btn-primary btn-block" type="submit">Save nickname 💫</button>
+    </form>
+  </div>
+</div>
+
 <div class="app is-hidden" id="appShell">
 
   <!-- ───────────── sidebar / bottom nav ───────────── -->
@@ -412,6 +430,15 @@
       <div class="card">
         <h2 class="card-title">🔐 Account</h2>
         <p class="card-sub" id="settingsAccountEmail"></p>
+        <form class="form" id="settingsNicknameForm" novalidate>
+          <div class="field">
+            <label for="settingsNickname">Nickname <small>(what Bloomie calls you)</small></label>
+            <input id="settingsNickname" type="text" maxlength="40"
+                   placeholder="what should Bloomie call you?" autocomplete="off" />
+          </div>
+          <p class="form-error is-hidden" id="settingsNicknameError" role="alert"></p>
+          <button class="btn btn-ghost btn-block" type="submit">💾 Save nickname</button>
+        </form>
         <button class="btn btn-ghost btn-block" type="button" id="settingsLogoutBtn">
           🚪 Log out
         </button>

@@ -33,6 +33,16 @@ practical nudge.
 - No markdown, no bullet points, no quotes around your answer. Just the line.
 """
 
+
+def _system_prompt(nickname: str | None) -> str:
+    if not nickname:
+        return SYSTEM_PROMPT
+    return (
+        f'{SYSTEM_PROMPT}\n- The user goes by "{nickname}". Address them by that '
+        "nickname sometimes for a personal touch — not in every single line, just "
+        "naturally, like a real bestie would."
+    )
+
 # mood -> (canned lines, emoji)
 FALLBACK: dict[str, tuple[list[str], str]] = {
     "comfy": (
@@ -105,7 +115,7 @@ def _facts(s: Summary) -> str:
     )
 
 
-async def vibe_check(summary: Summary) -> VibeCheck:
+async def vibe_check(summary: Summary, nickname: str | None = None) -> VibeCheck:
     settings = get_settings()
     mood = summary.status
 
@@ -115,7 +125,7 @@ async def vibe_check(summary: Summary) -> VibeCheck:
     payload = {
         "model": settings.nvidia_model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt(nickname)},
             {"role": "user", "content": _facts(summary)},
         ],
         "temperature": 1.0,

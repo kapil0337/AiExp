@@ -249,6 +249,7 @@ class UserOut(BaseModel):
     id: int
     email: str
     name: str
+    nickname: str
     picture: str
     created_at: dt.datetime
 
@@ -258,6 +259,7 @@ class UserOut(BaseModel):
             id=u.id,
             email=u.email,
             name=u.name or "",
+            nickname=u.nickname or "",
             picture=u.picture or "",
             created_at=u.created_at,
         )
@@ -271,3 +273,15 @@ class GoogleLoginIn(BaseModel):
 class AuthMe(BaseModel):
     authenticated: bool
     user: UserOut | None = None
+
+
+class NicknameIn(BaseModel):
+    nickname: str = Field(min_length=1, max_length=40)
+
+    @field_validator("nickname")
+    @classmethod
+    def _strip_nickname(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Give Bloomie something to call you 🥺")
+        return v
