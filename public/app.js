@@ -40,7 +40,7 @@ const state = {
   emoji: "🌸",
   category: "other",
   view: "home",
-  filters: { q: "", method: "", category: "" },
+  filters: { q: "", method: "", category: "", month: "" },
   showSettled: false,
 };
 
@@ -302,7 +302,7 @@ async function handleGoogleCredential(response) {
   try {
     const user = await api("/auth/google", {
       method: "POST",
-      body: { credential: response.credential },
+      body: { credential: response.credential, remember: $("#keepSignedIn").checked },
     });
     state.user = user;
     renderUserBadge();
@@ -725,8 +725,6 @@ function renderHome() {
 }
 
 function expenseRow(e) {
-  const dots = e.methods.map((m) => `<span class="method-dot ${m}" title="${METHOD_META[m].label}"></span>`).join("");
-  const methodNames = e.methods.map((m) => METHOD_META[m].label).join(" + ") || "—";
   return `<li class="expense-item" data-id="${e.id}">
     <span class="expense-emoji">${esc(e.emoji)}</span>
     <div class="expense-main">
@@ -734,7 +732,6 @@ function expenseRow(e) {
       <p class="expense-meta">
         <span>${prettyDate(e.spent_on)}</span>
         <span class="dot-sep">${esc(e.category)}</span>
-        <span class="method-dots" aria-label="Paid with ${methodNames}">${dots}</span>
       </p>
     </div>
     <div class="expense-right">
@@ -824,6 +821,9 @@ function renderSettings() {
   $("#bgName").value = s.budget_name;
   $("#bgTotal").value = s.total_budget || "";
   $("#bgCurrency").value = s.currency;
+  $("#settingsAccountEmail").textContent = state.user
+    ? `Signed in as ${state.user.email}`
+    : "";
 }
 
 function syncCurrencySymbols() {
@@ -859,11 +859,12 @@ async function loadAll() {
 
 async function loadExpenses() {
   const list = $("#expenseList");
-  const { q, method, category } = state.filters;
+  const { q, method, category, month } = state.filters;
   const params = new URLSearchParams({ limit: "300" });
   if (q) params.set("q", q);
   if (method) params.set("method", method);
   if (category) params.set("category", category);
+  if (month) params.set("month", month);
 
   list.innerHTML = `<li class="skeleton"></li><li class="skeleton"></li><li class="skeleton"></li>`;
   try {
@@ -1147,6 +1148,9 @@ function wireEvents() {
   $("#filterCategory").addEventListener("change", (e) => {
     state.filters.category = e.target.value; loadExpenses();
   });
+  $("#filterMonth").addEventListener("change", (e) => {
+    state.filters.month = e.target.value; loadExpenses();
+  });
 
   // splits
   $("#splitForm").addEventListener("submit", async (e) => {
@@ -1250,6 +1254,7 @@ function wireEvents() {
   $("#bloomieRefresh").addEventListener("click", askBloomie);
 
   $("#logoutBtn").addEventListener("click", logout);
+  $("#settingsLogoutBtn").addEventListener("click", logout);
 
   // repaint charts on resize (viewBox handles scale; labels need re-thinning)
   let rs;

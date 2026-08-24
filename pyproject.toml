@@ -3,6 +3,22 @@ name = "bloom-budget"
 version = "1.0.0"
 description = "A very pink expense tracker with a sassy NVIDIA-powered money coach"
 requires-python = ">=3.11"
+# Mirrors requirements.txt (Docker's source of truth) — Vercel's build prioritizes
+# pyproject.toml over requirements.txt when both exist without a uv.lock, so this
+# must stay in sync or the Vercel deploy silently installs zero dependencies.
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "sqlalchemy==2.0.36",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.0",
+    "psycopg[binary]==3.2.3",
+    "httpx==0.28.1",
+    "python-dotenv==1.0.1",
+    "google-auth==2.37.0",
+    "itsdangerous==2.2.0",
+    "requests==2.32.3",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

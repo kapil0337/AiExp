@@ -30,6 +30,11 @@
     <div class="brand-mark auth-mark" aria-hidden="true">🌸</div>
     <h1 class="auth-title">Bloom Budget</h1>
     <p class="auth-sub">Sign in with Google to see your budget</p>
+    <label class="switch keep-signed-in">
+      <input type="checkbox" id="keepSignedIn" checked />
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+      <span>Keep me signed in</span>
+    </label>
     <div id="gsiButton" class="gsi-button"></div>
     <p class="form-error is-hidden" id="authError" role="alert"></p>
   </div>
@@ -222,6 +227,7 @@
         <h2 class="card-title">🧾 Everything she spent</h2>
         <div class="filter-row">
           <input id="filterQ" type="search" placeholder="🔍 search…" autocomplete="off" />
+          <input id="filterMonth" type="month" aria-label="Filter by month" />
           <select id="filterMethod" aria-label="Filter by payment method">
             <option value="">All methods</option>
             <option value="cash">💵 Cash</option>
@@ -401,6 +407,14 @@
             <span class="switch-track"><span class="switch-thumb"></span></span>
           </label>
         </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🔐 Account</h2>
+        <p class="card-sub" id="settingsAccountEmail"></p>
+        <button class="btn btn-ghost btn-block" type="button" id="settingsLogoutBtn">
+          🚪 Log out
+        </button>
       </div>
 
       <div class="card danger-card">

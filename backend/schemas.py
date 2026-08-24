@@ -265,6 +265,7 @@ class UserOut(BaseModel):
 
 class GoogleLoginIn(BaseModel):
     credential: str = Field(min_length=1)
+    remember: bool = True
 
 
 class AuthMe(BaseModel):

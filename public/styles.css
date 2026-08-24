@@ -517,7 +517,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .label small { font-weight: 600; color: var(--ink-muted); }
 
 input[type="text"], input[type="search"], input[type="number"],
-input[type="date"], select {
+input[type="date"], input[type="month"], select {
   width: 100%;
   padding: .7rem .85rem;
   border-radius: var(--r-md);
@@ -710,14 +710,6 @@ select {
   display: flex; gap: .35rem; align-items: center; flex-wrap: wrap;
 }
 .dot-sep::before { content: "·"; margin-right: .35rem; }
-.method-dots { display: inline-flex; gap: 3px; align-items: center; }
-.method-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--surface-2);
-}
-.method-dot.cash { background: var(--s-cash); }
-.method-dot.gpay { background: var(--s-gpay); }
-.method-dot.card { background: var(--s-card); }
 
 .expense-right { display: grid; justify-items: end; gap: .2rem; }
 .expense-amount { font-weight: 700; font-size: .95rem; white-space: nowrap; }
@@ -931,7 +923,7 @@ select {
   .brand { padding: 1.2rem 1.5rem .6rem; }
   .brand h1 { font-size: 1.6rem; }
   .nav-label { font-size: .72rem; }
-  .filter-row { grid-template-columns: 1.6fr 1fr 1fr; }
+  .filter-row { grid-template-columns: 1.4fr 1fr 1fr 1fr; }
   .kpi-row { grid-template-columns: repeat(4, 1fr); }
   .card { padding: 1.3rem; }
   .hero-figure { font-size: 3.4rem; }

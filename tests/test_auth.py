@@ -68,6 +68,26 @@ def test_login_success_sets_cookie_and_persists(monkeypatch):
     assert c.get("/api/summary").status_code == 200
 
 
+def test_remember_false_sets_a_browser_session_cookie(monkeypatch):
+    """Unchecking "keep me signed in" should drop Max-Age so the cookie dies
+    with the browser session instead of persisting for session_max_age_days."""
+    monkeypatch.setattr(
+        main_module,
+        "verify_google_id_token",
+        lambda credential: fake_claims("test@example.com"),
+    )
+    c = raw_client()
+    r = c.post("/api/auth/google", json={"credential": "whatever", "remember": False})
+    assert r.status_code == 200
+    set_cookie = r.headers["set-cookie"]
+    assert "max-age" not in set_cookie.lower()
+
+    # remember=True (the default) does persist
+    c2 = raw_client()
+    r2 = c2.post("/api/auth/google", json={"credential": "whatever"})
+    assert "max-age" in r2.headers["set-cookie"].lower()
+
+
 def test_logout_clears_session(monkeypatch):
     monkeypatch.setattr(
         main_module,

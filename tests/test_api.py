@@ -171,6 +171,31 @@ def test_expense_filters(client):
     assert client.get("/api/expenses?q=nothing").json() == []
 
 
+def test_expense_month_filter(client):
+    set_budget(client)
+    client.post(
+        "/api/expenses",
+        json={"name": "New Year brunch", "cash_amount": 500, "spent_on": "2026-01-15"},
+    )
+    client.post(
+        "/api/expenses",
+        json={"name": "Valentine dinner", "cash_amount": 1_000, "spent_on": "2026-02-14"},
+    )
+    client.post(
+        "/api/expenses",
+        json={"name": "Month-end snack", "cash_amount": 100, "spent_on": "2026-02-28"},
+    )
+
+    jan = client.get("/api/expenses?month=2026-01").json()
+    assert [e["name"] for e in jan] == ["New Year brunch"]
+
+    feb = client.get("/api/expenses?month=2026-02").json()
+    assert {e["name"] for e in feb} == {"Valentine dinner", "Month-end snack"}
+
+    assert client.get("/api/expenses?month=2026-03").json() == []
+    assert client.get("/api/expenses?month=bogus").status_code == 422
+
+
 def test_update_and_delete_expense(client):
     set_budget(client)
     e = client.post("/api/expenses", json={"name": "Typo", "cash_amount": 100}).json()

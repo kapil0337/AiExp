@@ -115,6 +115,26 @@ serverless function; `vercel.json` rewrites `/api/*` onto it.
 > `postgres://` and `postgresql://` URLs are rewritten to `postgresql+psycopg://`
 > automatically, so paste whatever your provider gives you.
 
+### ⚠️ Changing a model after the database exists
+
+There are **no migrations**. `create_all()` creates missing *tables*, but it never
+adds *columns* to a table that already exists. So if you add a field to a model and
+redeploy against a database created before that field, every request touching that
+table fails with `UndefinedColumn`.
+
+Startup now catches this and refuses to run with a message naming the missing
+columns, instead of serving a wall of 500s. When you see it:
+
+```bash
+docker compose down -v && docker compose up --build   # local: recreate the volume
+rm data/bloom.db                                      # local SQLite
+```
+
+On a deployed Postgres you cannot just wipe it once there's real data — add the
+column by hand (`ALTER TABLE budgets ADD COLUMN user_id INTEGER ...`) or bring in
+Alembic before the data matters. This is worth doing *before* she starts using it
+for real.
+
 ---
 
 ## Setting up Google Sign-In

@@ -299,6 +299,7 @@ def list_expenses(
     q: str | None = Query(default=None, max_length=120),
     method: str | None = Query(default=None, pattern="^(cash|gpay|card)$"),
     category: str | None = Query(default=None, max_length=40),
+    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
 ) -> list[ExpenseOut]:
     b = active_budget(db, user)
     stmt = select(Expense).where(Expense.budget_id == b.id)
@@ -315,6 +316,11 @@ def list_expenses(
             "card": Expense.card_amount,
         }[method]
         stmt = stmt.where(column > 0)
+    if month:
+        year, mon = (int(part) for part in month.split("-"))
+        start = dt.date(year, mon, 1)
+        end = dt.date(year + 1, 1, 1) if mon == 12 else dt.date(year, mon + 1, 1)
+        stmt = stmt.where(Expense.spent_on >= start, Expense.spent_on < end)
 
     stmt = (
         stmt.order_by(Expense.spent_on.desc(), Expense.id.desc())
@@ -660,7 +666,10 @@ def login_with_google(payload: GoogleLoginIn, db: DB, response: Response) -> Use
         httponly=True,
         samesite="lax",
         secure=settings.session_cookie_secure,
-        max_age=settings.session_max_age_days * 86400,
+        # Unchecked "keep me signed in" -> a browser session cookie (no
+        # max_age) that's gone once the browser closes, instead of persisting
+        # for the full session_max_age_days.
+        max_age=settings.session_max_age_days * 86400 if payload.remember else None,
     )
     return UserOut.from_model(user)
 
