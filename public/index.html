@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ff8fbd" />
+<meta name="description" content="Bloom Budget — a very pink little expense tracker 🌸" />
+<title>Bloom Budget 🌸</title>
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- floaty background sparkles -->
+<div class="sky" aria-hidden="true">
+  <span class="blob blob-1"></span>
+  <span class="blob blob-2"></span>
+  <span class="blob blob-3"></span>
+  <div class="floaties" id="floaties"></div>
+</div>
+
+<!-- ───────────── login gate ───────────── -->
+<div class="auth-gate is-hidden" id="authGate">
+  <div class="card auth-card">
+    <div class="brand-mark auth-mark" aria-hidden="true">🌸</div>
+    <h1 class="auth-title">Bloom Budget</h1>
+    <p class="auth-sub">Sign in with Google to see your budget</p>
+    <div id="gsiButton" class="gsi-button"></div>
+    <p class="form-error is-hidden" id="authError" role="alert"></p>
+  </div>
+</div>
+
+<div class="app is-hidden" id="appShell">
+
+  <!-- ───────────── sidebar / bottom nav ───────────── -->
+  <header class="brand">
+    <div class="brand-mark" aria-hidden="true">🌸</div>
+    <div class="brand-text">
+      <h1>Bloom Budget</h1>
+      <p id="brandSub">your money, but cuter</p>
+    </div>
+    <div class="user-badge is-hidden" id="userBadge">
+      <img class="user-avatar" id="userAvatar" alt="" />
+      <button class="icon-btn logout-btn" id="logoutBtn" type="button"
+              aria-label="Log out" title="Log out">🚪</button>
+    </div>
+    <button class="icon-btn theme-btn" id="themeBtn" type="button"
+            aria-label="Switch theme" title="Switch theme">🌙</button>
+  </header>
+
+  <nav class="nav" aria-label="Main">
+    <button class="nav-item is-active" data-view="home" type="button">
+      <span class="nav-emoji" aria-hidden="true">🏡</span><span class="nav-label">Home</span>
+    </button>
+    <button class="nav-item" data-view="log" type="button">
+      <span class="nav-emoji" aria-hidden="true">🧾</span><span class="nav-label">Expenses</span>
+    </button>
+    <button class="nav-item" data-view="stats" type="button">
+      <span class="nav-emoji" aria-hidden="true">📊</span><span class="nav-label">Stats</span>
+    </button>
+    <button class="nav-item" data-view="splits" type="button">
+      <span class="nav-emoji" aria-hidden="true">🤝</span><span class="nav-label">Owes me</span>
+    </button>
+    <button class="nav-item" data-view="settings" type="button">
+      <span class="nav-emoji" aria-hidden="true">⚙️</span><span class="nav-label">Settings</span>
+    </button>
+  </nav>
+
+  <main class="main" id="main">
+
+    <!-- ───────────── HOME ───────────── -->
+    <section class="view is-active" id="view-home" tabindex="-1">
+
+      <div class="card hero-card">
+        <div class="hero-top">
+          <p class="eyebrow">💖 Money left to play with</p>
+          <span class="pill" id="statusPill">loading…</span>
+        </div>
+
+        <p class="hero-figure" id="heroRemaining">—</p>
+        <p class="hero-sub" id="heroSub">Set your budget in Settings to get started ✨</p>
+
+        <!-- meter: one ratio against a limit -->
+        <div class="meter" id="meter" role="img" aria-label="Budget used">
+          <div class="meter-track">
+            <div class="meter-fill" id="meterFill" style="width:0%"></div>
+          </div>
+          <div class="meter-legend">
+            <span id="meterSpent">spent —</span>
+            <span id="meterTotal">of —</span>
+          </div>
+        </div>
+
+        <div class="hero-chips">
+          <span class="chip chip-ghost" id="chipPerDay">☕ — / day</span>
+          <span class="chip chip-ghost" id="chipOwed">🤝 — owed to you</span>
+        </div>
+      </div>
+
+      <!-- sassy AI bubble -->
+      <div class="card bloomie-card" id="bloomieCard">
+        <div class="bloomie-avatar" aria-hidden="true">
+          <span class="bloomie-face" id="bloomieFace">💅</span>
+        </div>
+        <div class="bloomie-body">
+          <div class="bloomie-name">
+            Bloomie says <span class="tag" id="bloomieTag">offline mode</span>
+          </div>
+          <p class="bloomie-text" id="bloomieText">
+            <span class="dots"><i></i><i></i><i></i></span>
+          </p>
+        </div>
+        <button class="icon-btn" id="bloomieRefresh" type="button"
+                aria-label="Ask Bloomie again" title="Ask again">🔄</button>
+      </div>
+
+      <!-- quick add -->
+      <div class="card">
+        <h2 class="card-title">✍️ Log an expense</h2>
+        <form id="expenseForm" class="form" novalidate>
+          <div class="field">
+            <label for="exName">What did you buy?</label>
+            <div class="input-with-emoji">
+              <button type="button" class="emoji-pick" id="exEmoji" aria-label="Pick an emoji">🌸</button>
+              <input id="exName" name="name" type="text" maxlength="120"
+                     placeholder="iced latte, nail appointment…" required autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="label">Category</span>
+            <div class="chip-row" id="categoryRow" role="radiogroup" aria-label="Category"></div>
+          </div>
+
+          <div class="field">
+            <span class="label">Paid with <small>(tick all she used)</small></span>
+            <div class="method-row">
+              <label class="method" data-method="cash">
+                <input type="checkbox" name="method" value="cash" />
+                <span class="method-face"><span class="method-emoji">💵</span> Cash</span>
+              </label>
+              <label class="method" data-method="gpay">
+                <input type="checkbox" name="method" value="gpay" />
+                <span class="method-face"><span class="method-emoji">📱</span> GPay</span>
+              </label>
+              <label class="method" data-method="card">
+                <input type="checkbox" name="method" value="card" />
+                <span class="method-face"><span class="method-emoji">💳</span> Card</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field" id="singleAmountField">
+            <label for="exAmount">Amount</label>
+            <div class="money-input">
+              <span class="cur" data-currency>₹</span>
+              <input id="exAmount" type="number" inputmode="decimal" min="0" step="0.01"
+                     placeholder="0.00" />
+            </div>
+          </div>
+
+          <div class="field is-hidden" id="multiAmountField">
+            <span class="label">How much on each?</span>
+            <div class="multi-grid" id="multiGrid"></div>
+            <p class="multi-total">Total: <strong id="multiTotal">₹0.00</strong></p>
+          </div>
+
+          <details class="extras">
+            <summary>➕ more details</summary>
+            <div class="extras-body">
+              <div class="field">
+                <label for="exDate">When?</label>
+                <input id="exDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="exNote">Note</label>
+                <input id="exNote" type="text" maxlength="300" placeholder="worth every rupee 💫" />
+              </div>
+              <div class="field">
+                <label class="switch">
+                  <input type="checkbox" id="exSplitToggle" />
+                  <span class="switch-track"><span class="switch-thumb"></span></span>
+                  <span>Someone owes me for this 👀</span>
+                </label>
+              </div>
+              <div class="split-inline is-hidden" id="splitInline">
+                <input id="exSplitWho" type="text" maxlength="80" placeholder="who? e.g. Meera" />
+                <div class="money-input">
+                  <span class="cur" data-currency>₹</span>
+                  <input id="exSplitAmt" type="number" inputmode="decimal" min="0" step="0.01"
+                         placeholder="their share" />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <p class="form-error is-hidden" id="expenseError" role="alert"></p>
+
+          <button class="btn btn-primary btn-block" type="submit" id="expenseSubmit">
+            <span>Add it 💕</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">🕒 Lately</h2>
+          <button class="link-btn" type="button" data-goto="log">see all →</button>
+        </div>
+        <ul class="expense-list" id="recentList"></ul>
+      </div>
+    </section>
+
+    <!-- ───────────── EXPENSES ───────────── -->
+    <section class="view" id="view-log" tabindex="-1">
+      <div class="card">
+        <h2 class="card-title">🧾 Everything she spent</h2>
+        <div class="filter-row">
+          <input id="filterQ" type="search" placeholder="🔍 search…" autocomplete="off" />
+          <select id="filterMethod" aria-label="Filter by payment method">
+            <option value="">All methods</option>
+            <option value="cash">💵 Cash</option>
+            <option value="gpay">📱 GPay</option>
+            <option value="card">💳 Card</option>
+          </select>
+          <select id="filterCategory" aria-label="Filter by category">
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <p class="list-summary" id="listSummary"></p>
+        <ul class="expense-list" id="expenseList"></ul>
+      </div>
+    </section>
+
+    <!-- ───────────── STATS ───────────── -->
+    <section class="view" id="view-stats" tabindex="-1">
+
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div class="card" id="cardMethods">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">💳 Where the money went out</h2>
+            <p class="card-sub">Share of total spending by payment method</p>
+          </div>
+          <button class="link-btn table-toggle" type="button" data-table="methodTable">
+            table view
+          </button>
+        </div>
+        <div id="methodChart" class="chart-wrap"></div>
+        <div class="legend" id="methodLegend"></div>
+        <div class="table-view is-hidden" id="methodTable"></div>
+      </div>
+
+      <div class="card" id="cardDaily">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">📅 Daily damage</h2>
+            <p class="card-sub" id="dailySub">Last 14 days</p>
+          </div>
+          <button class="link-btn table-toggle" type="button" data-table="dailyTable">
+            table view
+          </button>
+        </div>
+        <div id="dailyChart" class="chart-wrap"></div>
+        <div class="table-view is-hidden" id="dailyTable"></div>
+      </div>
+
+      <div class="card" id="cardCategories">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">🎀 By category</h2>
+            <p class="card-sub">Biggest habits first</p>
+          </div>
+          <button class="link-btn table-toggle" type="button" data-table="catTable">
+            table view
+          </button>
+        </div>
+        <div id="categoryChart" class="chart-wrap"></div>
+        <div class="table-view is-hidden" id="catTable"></div>
+      </div>
+    </section>
+
+    <!-- ───────────── SPLITS ───────────── -->
+    <section class="view" id="view-splits" tabindex="-1">
+      <div class="split-summary">
+        <div class="card mini-card mini-good">
+          <p class="eyebrow">🤝 Owed to you</p>
+          <p class="mini-figure" id="owedToHer">—</p>
+          <p class="mini-sub">coming back to you (hopefully)</p>
+        </div>
+        <div class="card mini-card mini-warn">
+          <p class="eyebrow">💸 You owe</p>
+          <p class="mini-figure" id="sheOwes">—</p>
+          <p class="mini-sub">pay it before they text</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">➕ New IOU</h2>
+        <form class="form" id="splitForm" novalidate>
+          <div class="field">
+            <span class="label">Direction</span>
+            <div class="chip-row" role="radiogroup" aria-label="Direction">
+              <label class="chip chip-radio">
+                <input type="radio" name="direction" value="they_owe" checked />
+                <span>🙋‍♀️ They owe me</span>
+              </label>
+              <label class="chip chip-radio">
+                <input type="radio" name="direction" value="she_owes" />
+                <span>🙈 I owe them</span>
+              </label>
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label for="spPerson">Who?</label>
+              <input id="spPerson" type="text" maxlength="80" placeholder="Meera" required autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="spAmount">How much?</label>
+              <div class="money-input">
+                <span class="cur" data-currency>₹</span>
+                <input id="spAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="spNote">What for?</label>
+            <input id="spNote" type="text" maxlength="300" placeholder="dinner at that ramen place 🍜" />
+          </div>
+          <p class="form-error is-hidden" id="splitError" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">Save IOU 💌</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">📋 The ledger</h2>
+          <label class="tiny-check">
+            <input type="checkbox" id="showSettled" /> show settled
+          </label>
+        </div>
+        <ul class="split-list" id="splitList"></ul>
+      </div>
+    </section>
+
+    <!-- ───────────── SETTINGS ───────────── -->
+    <section class="view" id="view-settings" tabindex="-1">
+      <div class="card">
+        <h2 class="card-title">💰 Your budget</h2>
+        <form class="form" id="budgetForm" novalidate>
+          <div class="field">
+            <label for="bgName">Call it something cute</label>
+            <input id="bgName" type="text" maxlength="80" placeholder="August pocket money" />
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label for="bgTotal">Total amount</label>
+              <div class="money-input">
+                <span class="cur" data-currency>₹</span>
+                <input id="bgTotal" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
+              </div>
+            </div>
+            <div class="field">
+              <label for="bgCurrency">Currency</label>
+              <select id="bgCurrency">
+                <option value="INR">₹ INR</option>
+                <option value="USD">$ USD</option>
+                <option value="EUR">€ EUR</option>
+                <option value="GBP">£ GBP</option>
+                <option value="AED">AED</option>
+                <option value="JPY">¥ JPY</option>
+              </select>
+            </div>
+          </div>
+          <p class="form-error is-hidden" id="budgetError" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">Save budget 🌷</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🎨 Look &amp; feel</h2>
+        <div class="setting-row">
+          <span>Theme</span>
+          <div class="seg" role="radiogroup" aria-label="Theme">
+            <label class="seg-item"><input type="radio" name="theme" value="light" /><span>☀️ Light</span></label>
+            <label class="seg-item"><input type="radio" name="theme" value="dark" /><span>🌙 Dark</span></label>
+            <label class="seg-item"><input type="radio" name="theme" value="auto" checked /><span>✨ Auto</span></label>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>Sparkles &amp; wiggles</span>
+          <label class="switch">
+            <input type="checkbox" id="motionToggle" checked />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card danger-card">
+        <h2 class="card-title">🧹 Fresh start</h2>
+        <p class="card-sub">Deletes every expense and IOU. The budget amount stays.</p>
+        <button class="btn btn-danger" type="button" id="resetBtn">Clear everything</button>
+      </div>
+
+      <p class="footnote" id="footnote">🌸 made with love · <span id="aiStatus"></span></p>
+    </section>
+  </main>
+
+  <button class="fab" id="fab" type="button" aria-label="Add expense">
+    <span aria-hidden="true">➕</span>
+  </button>
+</div>
+
+<div class="toast-stack" id="toasts" aria-live="polite" aria-atomic="false"></div>
+<div class="confetti-layer" id="confetti" aria-hidden="true"></div>
+<div class="chart-tooltip is-hidden" id="chartTip" role="status"></div>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>
