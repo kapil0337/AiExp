@@ -20,7 +20,6 @@ def money(value: Decimal | float | None) -> float:
 
 class BudgetIn(BaseModel):
     name: str = Field(default="My Budget", max_length=80)
-    total_amount: float = Field(ge=0, le=1_000_000_000)
     currency: str = Field(default="INR", max_length=8)
 
 
@@ -29,9 +28,13 @@ class BudgetOut(BaseModel):
 
     id: int
     name: str
-    total_amount: float
+    account_balance: float
     currency: str
     created_at: dt.datetime
+
+
+class AccountBalanceIn(BaseModel):
+    balance: float = Field(ge=-1_000_000_000, le=1_000_000_000)
 
 
 # ── Expense ─────────────────────────────────────────────────────────────────
@@ -189,14 +192,20 @@ class MethodBreakdown(BaseModel):
     card: float
 
 
+class CardCycleOut(BaseModel):
+    cycle_start: dt.date
+    cycle_end: dt.date
+    settle_date: dt.date
+    card_spent_so_far: float
+
+
 class Summary(BaseModel):
     budget_id: int
     budget_name: str
     currency: str
-    total_budget: float
-    total_spent: float
-    remaining: float
-    percent_used: float
+    account_balance: float
+    spent_this_month: float
+    month_label: str
     by_method: MethodBreakdown
     owed_to_her: float
     she_owes: float
@@ -207,11 +216,19 @@ class Summary(BaseModel):
     avg_per_day: float
     biggest_expense: float
     top_category: str | None
-    status: str  # comfy | watchful | tight | overboard
+    card_cycle: CardCycleOut
 
 
 class DayPoint(BaseModel):
     date: dt.date
+    cash: float
+    gpay: float
+    card: float
+    total: float
+
+
+class MonthPoint(BaseModel):
+    month: str  # "YYYY-MM"
     cash: float
     gpay: float
     card: float
@@ -228,8 +245,38 @@ class CategoryPoint(BaseModel):
 class Dashboard(BaseModel):
     summary: Summary
     daily: list[DayPoint]
+    monthly: list[MonthPoint]
     categories: list[CategoryPoint]
     recent: list[ExpenseOut]
+
+
+# ── cash holdings ───────────────────────────────────────────────────────────
+
+
+class CashHoldingsIn(BaseModel):
+    note_500: int = Field(default=0, ge=0, le=100_000)
+    note_200: int = Field(default=0, ge=0, le=100_000)
+    note_100: int = Field(default=0, ge=0, le=100_000)
+    note_50: int = Field(default=0, ge=0, le=100_000)
+    note_20: int = Field(default=0, ge=0, le=100_000)
+    note_10: int = Field(default=0, ge=0, le=100_000)
+
+
+class CashHoldingsOut(CashHoldingsIn):
+    total: float
+    updated_at: dt.datetime
+
+
+# ── credit card cycle ───────────────────────────────────────────────────────
+
+
+class CardSettlementOut(BaseModel):
+    id: int
+    cycle_start: dt.date
+    cycle_end: dt.date
+    amount: float
+    source: str
+    settled_at: dt.datetime
 
 
 # ── AI ──────────────────────────────────────────────────────────────────────
@@ -237,7 +284,6 @@ class Dashboard(BaseModel):
 
 class VibeCheck(BaseModel):
     message: str
-    mood: str
     emoji: str
     source: str  # nvidia | offline
 

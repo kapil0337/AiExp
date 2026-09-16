@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from backend.auth import get_current_user  # noqa: E402
 from backend.database import Base, SessionLocal, engine  # noqa: E402
 from backend.main import app  # noqa: E402
-from backend.models import User  # noqa: E402
+from backend.models import ZERO, Budget, User  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -51,3 +51,21 @@ def client(test_user):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture
+def db_session():
+    db = SessionLocal()
+    yield db
+    db.close()
+
+
+@pytest.fixture
+def budget(db_session, test_user):
+    b = Budget(
+        user_id=test_user.id, name="Test", account_balance=ZERO, currency="INR", is_active=True
+    )
+    db_session.add(b)
+    db_session.commit()
+    db_session.refresh(b)
+    return b

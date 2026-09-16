@@ -36,6 +36,8 @@ const state = {
   dashboard: null,
   splits: [],
   categories: [],
+  cash: null,
+  cardHistory: [],
   currency: "INR",
   emoji: "🌸",
   category: "other",
@@ -626,6 +628,123 @@ function renderDailyChart(daily) {
     </tr>`).join("")}</tbody></table>`;
 }
 
+/* ── trend: monthly columns (one hue) ────────────────────── */
+
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monthLabel(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${MONTH_ABBR[m - 1]} ${y}`;
+}
+
+function renderMonthlyChart(monthly) {
+  const host = $("#monthlyChart");
+  host.innerHTML = "";
+  const max = Math.max(...monthly.map((m) => m.total), 0);
+
+  if (max <= 0) {
+    host.innerHTML = `<p class="empty"><span class="big">🌙</span>No spending history yet.</p>`;
+    $("#monthlyTable").innerHTML = "";
+    return;
+  }
+
+  const W = chartWidth(host), PLOT_H = 170, AXIS_H = 26, TOP = 22;
+  const H = TOP + PLOT_H + AXIS_H;
+  const LEFT = 4, RIGHT = 4;
+  const innerW = W - LEFT - RIGHT;
+  const slot = innerW / monthly.length;
+  const GAP = Math.min(10, slot * 0.15);
+  const barW = Math.max(10, slot - GAP * 2);
+
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": `Monthly spending over the last ${monthly.length} months` });
+
+  const css = getComputedStyle(document.documentElement);
+  const grid = css.getPropertyValue("--line").trim();
+  const muted = css.getPropertyValue("--ink-muted").trim();
+  const ink = css.getPropertyValue("--ink-2").trim();
+  const hue = seriesColor("cash");
+
+  const steps = 3;
+  for (let i = 0; i <= steps; i++) {
+    const y = TOP + PLOT_H - (PLOT_H * i) / steps;
+    svg.append(el("line", {
+      x1: LEFT, x2: W - RIGHT, y1: y, y2: y,
+      stroke: grid, "stroke-width": 1,
+    }));
+    if (i > 0) {
+      svg.append(el("text", {
+        x: LEFT, y: y - 5, fill: muted, "font-size": "10", "font-weight": "600",
+        "font-family": "Quicksand, system-ui, sans-serif",
+      }, fmtCompact((max * i) / steps)));
+    }
+  }
+
+  const maxIdx = monthly.reduce((best, m, i) => (m.total > monthly[best].total ? i : best), 0);
+
+  monthly.forEach((m, i) => {
+    const x = LEFT + i * slot + GAP;
+    const h = m.total > 0 ? Math.max(3, (m.total / max) * PLOT_H) : 0;
+    const y = TOP + PLOT_H - h;
+
+    if (h > 0) {
+      svg.append(el("path", {
+        d: topRoundedPath(x, y, barW, h, 4),
+        fill: hue,
+        opacity: i === maxIdx ? "1" : "0.82",
+      }));
+    }
+
+    const hit = el("rect", {
+      x: LEFT + i * slot, y: TOP, width: slot, height: PLOT_H,
+      fill: "transparent", tabindex: "0",
+      "aria-label": `${monthLabel(m.month)}: ${fmt(m.total)}`,
+    });
+    const tipHtml = `<div class="tip-title">${monthLabel(m.month)}</div>
+      <div class="tip-row"><span>Total</span><strong>${fmt(m.total, { decimals: true })}</strong></div>
+      ${METHODS.filter((mm) => m[mm] > 0).map((mm) =>
+        `<div class="tip-row"><span>${METHOD_META[mm].emoji} ${METHOD_META[mm].label}</span><span>${fmt(m[mm])}</span></div>`
+      ).join("")}`;
+    hit.addEventListener("pointerenter", (e) => showTip(tipHtml, e));
+    hit.addEventListener("pointermove", (e) => showTip(tipHtml, e));
+    hit.addEventListener("pointerleave", hideTip);
+    hit.addEventListener("focus", (e) => {
+      const r = e.target.getBoundingClientRect();
+      showTip(tipHtml, { clientX: r.left + r.width / 2, clientY: r.top + 20 });
+    });
+    hit.addEventListener("blur", hideTip);
+    svg.append(hit);
+
+    if (i === maxIdx && m.total > 0) {
+      svg.append(el("text", {
+        x: x + barW / 2, y: y - 7, "text-anchor": "middle",
+        fill: ink, "font-size": "11", "font-weight": "700",
+        "font-family": "Quicksand, system-ui, sans-serif",
+        "pointer-events": "none",
+      }, fmtCompact(m.total)));
+    }
+
+    svg.append(el("text", {
+      x: x + barW / 2, y: TOP + PLOT_H + 16, "text-anchor": "middle",
+      fill: muted, "font-size": "10", "font-weight": "600",
+      "font-family": "Quicksand, system-ui, sans-serif",
+    }, MONTH_ABBR[Number(m.month.split("-")[1]) - 1]));
+  });
+
+  host.append(svg);
+
+  const spentMonths = monthly.filter((m) => m.total > 0);
+  $("#monthlyTable").innerHTML = `<table>
+    <thead><tr><th>Month</th><th>💵</th><th>📱</th><th>💳</th><th>Total</th></tr></thead>
+    <tbody>${spentMonths.map((m) => `<tr>
+      <td>${monthLabel(m.month)}</td>
+      <td>${m.cash ? fmt(m.cash) : "—"}</td>
+      <td>${m.gpay ? fmt(m.gpay) : "—"}</td>
+      <td>${m.card ? fmt(m.card) : "—"}</td>
+      <td><strong>${fmt(m.total, { decimals: true })}</strong></td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
 /* ── magnitude: category bars (one hue) ──────────────────── */
 
 function renderCategoryChart(categories) {
@@ -706,39 +825,17 @@ function renderCategoryChart(categories) {
    RENDERERS
    ═══════════════════════════════════════════════════════════ */
 
-const STATUS_COPY = {
-  comfy: "living comfortably 🌿",
-  watchful: "keeping an eye 👀",
-  tight: "getting tight 😬",
-  overboard: "OVERBOARD 🚨",
-};
-
 function renderHome() {
   const s = state.summary;
   if (!s) return;
 
   const hero = $("#heroRemaining");
-  hero.classList.toggle("is-negative", s.remaining < 0);
-  countUp(hero, s.remaining, (v) => fmt(v));
+  hero.classList.toggle("is-negative", s.account_balance < 0);
+  countUp(hero, s.account_balance, (v) => fmt(v));
 
-  $("#statusPill").textContent = STATUS_COPY[s.status] || s.status;
-  $("#statusPill").dataset.status = s.status;
-
-  if (s.total_budget <= 0) {
-    $("#heroSub").textContent = "Set your budget in Settings to get started ✨";
-  } else if (s.remaining < 0) {
-    $("#heroSub").textContent = `You're ${fmt(Math.abs(s.remaining))} past the budget. Oopsie 🙈`;
-  } else {
-    $("#heroSub").textContent = `${fmt(s.total_spent)} spent of ${fmt(s.total_budget)} · ${s.expense_count} expense${s.expense_count === 1 ? "" : "s"}`;
-  }
-
-  const pct = Math.min(100, Math.max(0, s.percent_used));
-  const fill = $("#meterFill");
-  fill.style.width = `${pct}%`;
-  fill.dataset.status = s.status;
-  $("#meter").setAttribute("aria-label", `${Math.round(s.percent_used)}% of budget used`);
-  $("#meterSpent").textContent = `spent ${fmt(s.total_spent)}`;
-  $("#meterTotal").textContent = `of ${fmt(s.total_budget)} · ${Math.round(s.percent_used)}%`;
+  $("#heroSub").textContent = s.expense_count > 0
+    ? `${fmt(s.spent_this_month)} spent this month · ${s.expense_count} expense${s.expense_count === 1 ? "" : "s"}`
+    : "Set your balance in Settings to get started ✨";
 
   $("#chipPerDay").textContent = s.avg_per_day > 0
     ? `☕ ${fmt(s.avg_per_day)} / day`
@@ -746,6 +843,9 @@ function renderHome() {
   $("#chipOwed").textContent = s.owed_to_her > 0
     ? `🤝 ${fmt(s.owed_to_her)} owed to you`
     : "🤝 nobody owes you";
+  $("#chipCycle").textContent = s.card_cycle.card_spent_so_far > 0
+    ? `💳 ${fmt(s.card_cycle.card_spent_so_far)} this cycle`
+    : "💳 no card spend this cycle";
 
   $("#brandSub").textContent = s.budget_name || "your money, but cuter";
 }
@@ -787,9 +887,9 @@ function renderStats() {
   const s = d.summary;
 
   $("#kpiRow").innerHTML = [
-    { label: "Budget", value: fmt(s.total_budget), foot: s.budget_name },
-    { label: "Spent", value: fmt(s.total_spent), foot: `${Math.round(s.percent_used)}% used` },
-    { label: "Left", value: fmt(s.remaining), foot: s.remaining < 0 ? "over budget 🚨" : "still yours 💖" },
+    { label: "Balance", value: fmt(s.account_balance), foot: s.budget_name },
+    { label: "Spent this month", value: fmt(s.spent_this_month), foot: s.month_label },
+    { label: "Card cycle so far", value: fmt(s.card_cycle.card_spent_so_far), foot: `settles ${prettyDate(s.card_cycle.settle_date)}` },
     { label: "Owed to you", value: fmt(s.owed_to_her), foot: s.owed_to_her > 0 ? "chase them 👀" : "all clear ✨" },
   ].map((k) => `<div class="kpi">
       <p class="kpi-label">${k.label}</p>
@@ -800,6 +900,7 @@ function renderStats() {
   $("#dailySub").textContent = `Last ${d.daily.length} days · biggest single buy ${fmt(s.biggest_expense)}`;
   renderMethodChart(s.by_method);
   renderDailyChart(d.daily);
+  renderMonthlyChart(d.monthly);
   renderCategoryChart(d.categories);
 }
 
@@ -845,12 +946,54 @@ function renderSettings() {
   const s = state.summary;
   if (!s) return;
   $("#bgName").value = s.budget_name;
-  $("#bgTotal").value = s.total_budget || "";
   $("#bgCurrency").value = s.currency;
+  $("#balAmount").value = s.account_balance || "";
   $("#settingsAccountEmail").textContent = state.user
     ? `Signed in as ${state.user.email}`
     : "";
   $("#settingsNickname").value = state.user?.nickname || "";
+
+  renderCardCycle();
+}
+
+function renderCardCycle() {
+  const s = state.summary;
+  if (!s) return;
+  const c = s.card_cycle;
+  $("#cardCycleSub").textContent =
+    `Cycle: ${prettyDate(c.cycle_start)} – ${prettyDate(c.cycle_end)} · settles ${prettyDate(c.settle_date)}`;
+  $("#cardCycleAmount").textContent = fmt(c.card_spent_so_far, { decimals: true });
+
+  const list = $("#cardHistoryList");
+  const items = state.cardHistory || [];
+  list.innerHTML = items.length
+    ? items.slice(0, 6).map((h) => `<li class="expense-item">
+        <span class="expense-emoji">${h.source === "auto" ? "🔁" : "✅"}</span>
+        <div class="expense-main">
+          <p class="expense-name">${prettyDate(h.cycle_start)} – ${prettyDate(h.cycle_end)}</p>
+          <p class="expense-meta"><span>settled ${prettyDate(h.settled_at.slice(0, 10))} · ${h.source}</span></p>
+        </div>
+        <div class="expense-right">
+          <span class="expense-amount">${fmt(h.amount, { decimals: true })}</span>
+        </div>
+      </li>`).join("")
+    : `<li class="empty"><span class="big">💳</span>No cycles settled yet.</li>`;
+}
+
+function renderCash() {
+  const c = state.cash;
+  if (!c) return;
+  $$("[data-note]", $("#cashGrid")).forEach((input) => {
+    input.value = c[`note_${input.dataset.note}`] || "";
+  });
+  $("#cashTotal").textContent = fmt(c.total, { decimals: true });
+}
+
+function updateCashTotal() {
+  const total = $$("[data-note]").reduce(
+    (t, i) => t + (parseInt(i.value, 10) || 0) * Number(i.dataset.note), 0
+  );
+  $("#cashTotal").textContent = fmt(total, { decimals: true });
 }
 
 function syncCurrencySymbols() {
@@ -864,13 +1007,17 @@ function syncCurrencySymbols() {
 
 async function loadAll() {
   try {
-    const [dash, splits] = await Promise.all([
+    const [dash, splits, cash, cardHistory] = await Promise.all([
       api("/dashboard?days=14"),
       api("/splits"),
+      api("/cash-holdings"),
+      api("/card-cycle/history"),
     ]);
     state.dashboard = dash;
     state.summary = dash.summary;
     state.splits = splits;
+    state.cash = cash;
+    state.cardHistory = cardHistory;
     state.currency = dash.summary.currency;
 
     syncCurrencySymbols();
@@ -878,6 +1025,7 @@ async function loadAll() {
     renderRecent();
     renderSplits();
     renderSettings();
+    renderCash();
     if (state.view === "stats") renderStats();
   } catch (err) {
     toast(`😵 ${err.message}`, "error");
@@ -1231,36 +1379,83 @@ function wireEvents() {
     }
   });
 
-  // budget
-  $("#budgetForm").addEventListener("submit", async (e) => {
+  // preferences (name + currency)
+  $("#preferencesForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const total = parseFloat($("#bgTotal").value);
-    if (isNaN(total) || total < 0) return showFormError("#budgetError", "Pop a number in there 💰");
-    showFormError("#budgetError", "");
+    showFormError("#preferencesError", "");
     try {
       const summary = await api("/budget", {
         method: "PUT",
         body: {
           name: $("#bgName").value.trim() || "My Budget",
-          total_amount: total,
           currency: $("#bgCurrency").value,
         },
       });
       state.currency = summary.currency;
       syncCurrencySymbols();
+      toast("Saved 🌷");
+      await loadAll();
+    } catch (err) {
+      showFormError("#preferencesError", err.message);
+    }
+  });
+
+  // account balance
+  $("#balanceForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const balance = parseFloat($("#balAmount").value);
+    if (isNaN(balance)) return showFormError("#balanceError", "Pop a number in there 💰");
+    showFormError("#balanceError", "");
+    try {
+      await api("/account-balance", { method: "PUT", body: { balance } });
       confetti(18);
-      toast("Budget saved 🌷");
+      toast("Balance updated 🌷");
       await loadAll();
       askBloomie();
     } catch (err) {
-      showFormError("#budgetError", err.message);
+      showFormError("#balanceError", err.message);
+    }
+  });
+
+  // cash in hand
+  $$("[data-note]", $("#cashGrid")).forEach((input) =>
+    input.addEventListener("input", updateCashTotal)
+  );
+  $("#cashForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {};
+    $$("[data-note]", $("#cashGrid")).forEach((input) => {
+      body[`note_${input.dataset.note}`] = parseInt(input.value, 10) || 0;
+    });
+    try {
+      state.cash = await api("/cash-holdings", { method: "PUT", body });
+      renderCash();
+      toast("Cash counts saved 🌷");
+    } catch (err) {
+      toast(`😵 ${err.message}`, "error");
+    }
+  });
+
+  // credit card cycle
+  $("#cardSettleBtn").addEventListener("click", async () => {
+    try {
+      const res = await api("/card-cycle/settle-now", { method: "POST" });
+      if (res.settled) {
+        confetti(18);
+        toast(`Settled ${fmt(res.settlement.amount)} 💳`);
+        await loadAll();
+      } else {
+        toast("Nothing due to settle yet ✨");
+      }
+    } catch (err) {
+      toast(`😵 ${err.message}`, "error");
     }
   });
 
   $("#resetBtn").addEventListener("click", async () => {
     if (!confirm("Delete every expense and IOU? This can't be undone 🥺")) return;
     try {
-      await api("/budget/reset?keep_budget=true", { method: "POST" });
+      await api("/budget/reset", { method: "POST" });
       toast("Clean slate ✨");
       await loadAll();
       if (state.view === "log") loadExpenses();

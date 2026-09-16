@@ -60,7 +60,7 @@ class Budget(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(80), default="My Budget")
-    total_amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO)
+    account_balance: Mapped[Decimal] = mapped_column(MONEY, default=ZERO)
     currency: Mapped[str] = mapped_column(String(8), default="INR")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(
@@ -174,3 +174,58 @@ class Split(Base):
 
     budget: Mapped[Budget] = relationship(back_populates="splits")
     expense: Mapped[Expense | None] = relationship(back_populates="splits")
+
+
+class CashHolding(Base):
+    """Physical cash counted by INR note denomination. Informational only —
+    never summed into `Budget.account_balance`.
+    """
+
+    __tablename__ = "cash_holdings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    budget_id: Mapped[int] = mapped_column(
+        ForeignKey("budgets.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    note_500: Mapped[int] = mapped_column(default=0)
+    note_200: Mapped[int] = mapped_column(default=0)
+    note_100: Mapped[int] = mapped_column(default=0)
+    note_50: Mapped[int] = mapped_column(default=0)
+    note_20: Mapped[int] = mapped_column(default=0)
+    note_10: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CardCycleSettlement(Base):
+    """One row per settled 8th-to-8th credit card cycle.
+
+    Doubles as the idempotency guard for lazy auto-settlement: the unique
+    index on (budget_id, cycle_start, cycle_end) means two concurrent requests
+    racing to settle the same cycle can't both deduct — the loser's insert
+    fails and it backs off instead of double-charging the balance.
+    """
+
+    __tablename__ = "card_cycle_settlements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    budget_id: Mapped[int] = mapped_column(
+        ForeignKey("budgets.id", ondelete="CASCADE"), index=True
+    )
+    cycle_start: Mapped[dt.date] = mapped_column(Date)
+    cycle_end: Mapped[dt.date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(MONEY, default=ZERO)
+    source: Mapped[str] = mapped_column(String(8), default="auto")  # auto | manual
+    settled_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+Index(
+    "ix_card_cycle_unique",
+    CardCycleSettlement.budget_id,
+    CardCycleSettlement.cycle_start,
+    CardCycleSettlement.cycle_end,
+    unique=True,
+)

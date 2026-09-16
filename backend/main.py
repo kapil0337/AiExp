@@ -31,12 +31,19 @@ from .auth import (
     verify_google_id_token,
 )
 from .config import PUBLIC_DIR, get_settings
+from .cycles import current_cycle, cycle_card_total, run_auto_settlements, settle_date_for
+from .cycles import settle_now as cycles_settle_now
 from .database import get_db, init_db
-from .models import ZERO, Budget, Expense, Split, User
+from .models import ZERO, Budget, CardCycleSettlement, CashHolding, Expense, Split, User
 from .schemas import (
+    AccountBalanceIn,
     AuthMe,
     BudgetIn,
     BudgetOut,
+    CardCycleOut,
+    CardSettlementOut,
+    CashHoldingsIn,
+    CashHoldingsOut,
     CategoryPoint,
     Dashboard,
     DayPoint,
@@ -45,6 +52,7 @@ from .schemas import (
     ExpenseUpdate,
     GoogleLoginIn,
     MethodBreakdown,
+    MonthPoint,
     NicknameIn,
     SplitIn,
     SplitOut,
@@ -116,7 +124,7 @@ def active_budget(db: Session, user: User) -> Budget:
         budget = Budget(
             user_id=user.id,
             name="My Budget",
-            total_amount=ZERO,
+            account_balance=ZERO,
             currency=settings.default_currency,
             is_active=True,
         )
@@ -127,17 +135,29 @@ def active_budget(db: Session, user: User) -> Budget:
 
 
 def build_summary(db: Session, budget: Budget) -> Summary:
+    run_auto_settlements(db, budget)
+
+    today = dt.date.today()
+    month_start = dt.date(today.year, today.month, 1)
+    month_end = (
+        dt.date(today.year + 1, 1, 1)
+        if today.month == 12
+        else dt.date(today.year, today.month + 1, 1)
+    )
+
     totals = db.execute(
         select(
             func.coalesce(func.sum(Expense.cash_amount), 0),
             func.coalesce(func.sum(Expense.gpay_amount), 0),
             func.coalesce(func.sum(Expense.card_amount), 0),
             func.count(Expense.id),
-            func.min(Expense.spent_on),
-            func.max(Expense.spent_on),
-        ).where(Expense.budget_id == budget.id)
+        ).where(
+            Expense.budget_id == budget.id,
+            Expense.spent_on >= month_start,
+            Expense.spent_on < month_end,
+        )
     ).one()
-    cash, gpay, card, count, first_day, last_day = totals
+    cash, gpay, card, count = totals
 
     spent = Decimal(str(cash)) + Decimal(str(gpay)) + Decimal(str(card))
 
@@ -155,29 +175,18 @@ def build_summary(db: Session, budget: Budget) -> Summary:
     she_owes = split_sum("she_owes", False)
     recovered = split_sum("they_owe", True) - split_sum("she_owes", True)
 
-    total_budget = Decimal(str(budget.total_amount or 0))
-    remaining = total_budget - spent + recovered
-    percent = float(spent / total_budget * 100) if total_budget > 0 else 0.0
-
-    if total_budget <= 0:
-        status = "comfy"
-    elif percent > 100:
-        status = "overboard"
-    elif percent >= 85:
-        status = "tight"
-    elif percent >= 50:
-        status = "watchful"
-    else:
-        status = "comfy"
-
-    # Biggest single expense
+    # Biggest single expense this month
     biggest = db.scalar(
         select(
             func.max(Expense.cash_amount + Expense.gpay_amount + Expense.card_amount)
-        ).where(Expense.budget_id == budget.id)
+        ).where(
+            Expense.budget_id == budget.id,
+            Expense.spent_on >= month_start,
+            Expense.spent_on < month_end,
+        )
     )
 
-    # Top category by spend
+    # Top category by spend this month
     top_row = db.execute(
         select(
             Expense.category,
@@ -185,7 +194,11 @@ def build_summary(db: Session, budget: Budget) -> Summary:
                 Expense.cash_amount + Expense.gpay_amount + Expense.card_amount
             ).label("t"),
         )
-        .where(Expense.budget_id == budget.id)
+        .where(
+            Expense.budget_id == budget.id,
+            Expense.spent_on >= month_start,
+            Expense.spent_on < month_end,
+        )
         .group_by(Expense.category)
         .order_by(func.sum(
             Expense.cash_amount + Expense.gpay_amount + Expense.card_amount
@@ -193,30 +206,38 @@ def build_summary(db: Session, budget: Budget) -> Summary:
         .limit(1)
     ).first()
 
-    days_tracked = (last_day - first_day).days + 1 if first_day and last_day else 0
-    avg = float(spent) / days_tracked if days_tracked else 0.0
+    avg = float(spent) / today.day if today.day else 0.0
+
+    cycle_start, cycle_end = current_cycle(today)
+    card_cycle = CardCycleOut(
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+        settle_date=settle_date_for(cycle_end),
+        card_spent_so_far=money(cycle_card_total(db, budget.id, cycle_start, cycle_end)),
+    )
+
+    account_balance = Decimal(str(budget.account_balance or 0))
 
     return Summary(
         budget_id=budget.id,
         budget_name=budget.name,
         currency=budget.currency,
-        total_budget=money(total_budget),
-        total_spent=money(spent),
-        remaining=money(remaining),
-        percent_used=round(percent, 1),
+        account_balance=money(account_balance),
+        spent_this_month=money(spent),
+        month_label=month_start.strftime("%Y-%m"),
         by_method=MethodBreakdown(
             cash=money(cash), gpay=money(gpay), card=money(card)
         ),
         owed_to_her=money(owed_to_her),
         she_owes=money(she_owes),
         recovered=money(recovered),
-        remaining_if_everyone_pays=money(remaining + owed_to_her - she_owes),
+        remaining_if_everyone_pays=money(account_balance + owed_to_her - she_owes),
         expense_count=int(count or 0),
-        days_tracked=days_tracked,
+        days_tracked=today.day,
         avg_per_day=round(avg, 2),
         biggest_expense=money(biggest),
         top_category=top_row[0] if top_row else None,
-        status=status,
+        card_cycle=card_cycle,
     )
 
 
@@ -254,7 +275,7 @@ def read_budget(db: DB, user: CurrentUser) -> BudgetOut:
     return BudgetOut(
         id=b.id,
         name=b.name,
-        total_amount=money(b.total_amount),
+        account_balance=money(b.account_balance),
         currency=b.currency,
         created_at=b.created_at,
     )
@@ -264,28 +285,112 @@ def read_budget(db: DB, user: CurrentUser) -> BudgetOut:
 def set_budget(payload: BudgetIn, db: DB, user: CurrentUser) -> Summary:
     b = active_budget(db, user)
     b.name = payload.name.strip() or "My Budget"
-    b.total_amount = dec(payload.total_amount)
     b.currency = payload.currency.strip().upper()[:8] or "INR"
     db.commit()
     db.refresh(b)
     return build_summary(db, b)
 
 
+@app.put("/api/account-balance", response_model=Summary)
+def set_account_balance(payload: AccountBalanceIn, db: DB, user: CurrentUser) -> Summary:
+    b = active_budget(db, user)
+    b.account_balance = dec(payload.balance)
+    db.commit()
+    db.refresh(b)
+    return build_summary(db, b)
+
+
 @app.post("/api/budget/reset", response_model=Summary)
-def reset_budget(
-    db: DB, user: CurrentUser, keep_budget: bool = Query(default=True)
-) -> Summary:
-    """Wipe expenses + splits. Optionally zero the pot too."""
+def reset_budget(db: DB, user: CurrentUser) -> Summary:
+    """Wipe expenses + splits. Balance, cash counts, and card-cycle history stay."""
     b = active_budget(db, user)
     db.query(Split).filter(Split.budget_id == b.id).delete(synchronize_session=False)
     db.query(Expense).filter(Expense.budget_id == b.id).delete(
         synchronize_session=False
     )
-    if not keep_budget:
-        b.total_amount = ZERO
     db.commit()
     db.refresh(b)
     return build_summary(db, b)
+
+
+# ── cash holdings ───────────────────────────────────────────────────────────
+
+
+def _cash_total(h: CashHolding) -> Decimal:
+    return Decimal(
+        500 * h.note_500
+        + 200 * h.note_200
+        + 100 * h.note_100
+        + 50 * h.note_50
+        + 20 * h.note_20
+        + 10 * h.note_10
+    )
+
+
+def active_cash_holding(db: Session, budget: Budget) -> CashHolding:
+    holding = db.scalar(select(CashHolding).where(CashHolding.budget_id == budget.id))
+    if holding is None:
+        holding = CashHolding(budget_id=budget.id)
+        db.add(holding)
+        db.commit()
+        db.refresh(holding)
+    return holding
+
+
+def _cash_out(h: CashHolding) -> CashHoldingsOut:
+    return CashHoldingsOut(
+        note_500=h.note_500,
+        note_200=h.note_200,
+        note_100=h.note_100,
+        note_50=h.note_50,
+        note_20=h.note_20,
+        note_10=h.note_10,
+        total=money(_cash_total(h)),
+        updated_at=h.updated_at,
+    )
+
+
+@app.get("/api/cash-holdings", response_model=CashHoldingsOut)
+def read_cash_holdings(db: DB, user: CurrentUser) -> CashHoldingsOut:
+    b = active_budget(db, user)
+    return _cash_out(active_cash_holding(db, b))
+
+
+@app.put("/api/cash-holdings", response_model=CashHoldingsOut)
+def set_cash_holdings(payload: CashHoldingsIn, db: DB, user: CurrentUser) -> CashHoldingsOut:
+    b = active_budget(db, user)
+    h = active_cash_holding(db, b)
+    for field, value in payload.model_dump().items():
+        setattr(h, field, value)
+    db.commit()
+    db.refresh(h)
+    return _cash_out(h)
+
+
+# ── credit card cycle ───────────────────────────────────────────────────────
+
+
+@app.post("/api/card-cycle/settle-now")
+def settle_card_cycle_now(db: DB, user: CurrentUser) -> dict:
+    b = active_budget(db, user)
+    row = cycles_settle_now(db, b)
+    return {
+        "settled": row is not None,
+        "settlement": CardSettlementOut.model_validate(row, from_attributes=True)
+        if row
+        else None,
+    }
+
+
+@app.get("/api/card-cycle/history", response_model=list[CardSettlementOut])
+def card_cycle_history(db: DB, user: CurrentUser) -> list[CardSettlementOut]:
+    b = active_budget(db, user)
+    rows = db.scalars(
+        select(CardCycleSettlement)
+        .where(CardCycleSettlement.budget_id == b.id)
+        .order_by(CardCycleSettlement.cycle_end.desc())
+    ).all()
+    return [CardSettlementOut.model_validate(r, from_attributes=True) for r in rows]
 
 
 # ── expenses ────────────────────────────────────────────────────────────────
@@ -553,6 +658,13 @@ def dashboard(
             )
         )
 
+    month_start = dt.date(today.year, today.month, 1)
+    month_end = (
+        dt.date(today.year + 1, 1, 1)
+        if today.month == 12
+        else dt.date(today.year, today.month + 1, 1)
+    )
+
     cat_rows = db.execute(
         select(
             Expense.category,
@@ -561,7 +673,11 @@ def dashboard(
             ).label("t"),
             func.count(Expense.id),
         )
-        .where(Expense.budget_id == b.id)
+        .where(
+            Expense.budget_id == b.id,
+            Expense.spent_on >= month_start,
+            Expense.spent_on < month_end,
+        )
         .group_by(Expense.category)
         .order_by(func.sum(
             Expense.cash_amount + Expense.gpay_amount + Expense.card_amount
@@ -578,6 +694,47 @@ def dashboard(
         for row in cat_rows
     ]
 
+    months = []
+    cursor = month_start
+    for _ in range(12):
+        months.append(cursor)
+        cursor = (
+            dt.date(cursor.year - 1, 12, 1)
+            if cursor.month == 1
+            else dt.date(cursor.year, cursor.month - 1, 1)
+        )
+    months.reverse()
+    earliest = months[0]
+
+    month_rows = db.execute(
+        select(
+            Expense.spent_on,
+            Expense.cash_amount,
+            Expense.gpay_amount,
+            Expense.card_amount,
+        ).where(Expense.budget_id == b.id, Expense.spent_on >= earliest)
+    ).all()
+
+    month_buckets: dict[tuple[int, int], list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+    for spent_on, c, g, cd in month_rows:
+        bucket = month_buckets[(spent_on.year, spent_on.month)]
+        bucket[0] += float(c)
+        bucket[1] += float(g)
+        bucket[2] += float(cd)
+
+    monthly = []
+    for m in months:
+        c, g, cd = month_buckets.get((m.year, m.month), [0.0, 0.0, 0.0])
+        monthly.append(
+            MonthPoint(
+                month=m.strftime("%Y-%m"),
+                cash=round(c, 2),
+                gpay=round(g, 2),
+                card=round(cd, 2),
+                total=round(c + g + cd, 2),
+            )
+        )
+
     recent_rows = db.scalars(
         select(Expense)
         .where(Expense.budget_id == b.id)
@@ -588,6 +745,7 @@ def dashboard(
     return Dashboard(
         summary=summary,
         daily=daily,
+        monthly=monthly,
         categories=categories,
         recent=[ExpenseOut.from_model(e) for e in recent_rows],
     )

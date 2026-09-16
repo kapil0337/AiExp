@@ -101,27 +101,16 @@
 
       <div class="card hero-card">
         <div class="hero-top">
-          <p class="eyebrow">💖 Money left to play with</p>
-          <span class="pill" id="statusPill">loading…</span>
+          <p class="eyebrow">💰 Account balance</p>
         </div>
 
         <p class="hero-figure" id="heroRemaining">—</p>
-        <p class="hero-sub" id="heroSub">Set your budget in Settings to get started ✨</p>
-
-        <!-- meter: one ratio against a limit -->
-        <div class="meter" id="meter" role="img" aria-label="Budget used">
-          <div class="meter-track">
-            <div class="meter-fill" id="meterFill" style="width:0%"></div>
-          </div>
-          <div class="meter-legend">
-            <span id="meterSpent">spent —</span>
-            <span id="meterTotal">of —</span>
-          </div>
-        </div>
+        <p class="hero-sub" id="heroSub">Set your balance in Settings to get started ✨</p>
 
         <div class="hero-chips">
           <span class="chip chip-ghost" id="chipPerDay">☕ — / day</span>
           <span class="chip chip-ghost" id="chipOwed">🤝 — owed to you</span>
+          <span class="chip chip-ghost" id="chipCycle">💳 cycle —</span>
         </div>
       </div>
 
@@ -295,6 +284,20 @@
         <div class="table-view is-hidden" id="dailyTable"></div>
       </div>
 
+      <div class="card" id="cardMonthly">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">📆 Monthly history</h2>
+            <p class="card-sub">Last 12 months</p>
+          </div>
+          <button class="link-btn table-toggle" type="button" data-table="monthlyTable">
+            table view
+          </button>
+        </div>
+        <div id="monthlyChart" class="chart-wrap"></div>
+        <div class="table-view is-hidden" id="monthlyTable"></div>
+      </div>
+
       <div class="card" id="cardCategories">
         <div class="card-head">
           <div>
@@ -377,34 +380,87 @@
     <!-- ───────────── SETTINGS ───────────── -->
     <section class="view" id="view-settings" tabindex="-1">
       <div class="card">
-        <h2 class="card-title">💰 Your budget</h2>
-        <form class="form" id="budgetForm" novalidate>
+        <h2 class="card-title">💰 Account balance</h2>
+        <p class="card-sub">What you actually have. Doesn't reset monthly — edit it whenever real money moves (rent in, rent out, whatever).</p>
+        <form class="form" id="balanceForm" novalidate>
+          <div class="field">
+            <label for="balAmount">Set balance to</label>
+            <div class="money-input">
+              <span class="cur" data-currency>₹</span>
+              <input id="balAmount" type="number" inputmode="decimal" step="0.01" placeholder="0.00" required />
+            </div>
+          </div>
+          <p class="form-error is-hidden" id="balanceError" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">Set balance 🌷</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🏷️ Preferences</h2>
+        <form class="form" id="preferencesForm" novalidate>
           <div class="field">
             <label for="bgName">Call it something cute</label>
             <input id="bgName" type="text" maxlength="80" placeholder="August pocket money" />
           </div>
-          <div class="two-col">
-            <div class="field">
-              <label for="bgTotal">Total amount</label>
-              <div class="money-input">
-                <span class="cur" data-currency>₹</span>
-                <input id="bgTotal" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
-              </div>
+          <div class="field">
+            <label for="bgCurrency">Currency</label>
+            <select id="bgCurrency">
+              <option value="INR">₹ INR</option>
+              <option value="USD">$ USD</option>
+              <option value="EUR">€ EUR</option>
+              <option value="GBP">£ GBP</option>
+              <option value="AED">AED</option>
+              <option value="JPY">¥ JPY</option>
+            </select>
+          </div>
+          <p class="form-error is-hidden" id="preferencesError" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">Save 🌷</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">💳 Credit card cycle</h2>
+        <p class="card-sub" id="cardCycleSub">Cycle runs the 8th to the 8th. Spend auto-deducts from your balance on the 26th.</p>
+        <div class="setting-row">
+          <span>This cycle so far</span>
+          <strong id="cardCycleAmount">—</strong>
+        </div>
+        <button class="btn btn-ghost btn-block" type="button" id="cardSettleBtn">Settle now</button>
+        <ul class="expense-list" id="cardHistoryList"></ul>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">💵 Cash in hand</h2>
+        <p class="card-sub">Physical notes you're holding. Separate from your account balance — informational only.</p>
+        <form class="form" id="cashForm" novalidate>
+          <div class="multi-grid" id="cashGrid">
+            <div class="multi-row">
+              <span class="tagline">₹500 notes</span>
+              <input type="number" inputmode="numeric" min="0" step="1" placeholder="0" data-note="500" />
             </div>
-            <div class="field">
-              <label for="bgCurrency">Currency</label>
-              <select id="bgCurrency">
-                <option value="INR">₹ INR</option>
-                <option value="USD">$ USD</option>
-                <option value="EUR">€ EUR</option>
-                <option value="GBP">£ GBP</option>
-                <option value="AED">AED</option>
-                <option value="JPY">¥ JPY</option>
-              </select>
+            <div class="multi-row">
+              <span class="tagline">₹200 notes</span>
+              <input type="number" inputmode="numeric" min="0" step="1" placeholder="0" data-note="200" />
+            </div>
+            <div class="multi-row">
+              <span class="tagline">₹100 notes</span>
+              <input type="number" inputmode="numeric" min="0" step="1" placeholder="0" data-note="100" />
+            </div>
+            <div class="multi-row">
+              <span class="tagline">₹50 notes</span>
+              <input type="number" inputmode="numeric" min="0" step="1" placeholder="0" data-note="50" />
+            </div>
+            <div class="multi-row">
+              <span class="tagline">₹20 notes</span>
+              <input type="number" inputmode="numeric" min="0" step="1" placeholder="0" data-note="20" />
+            </div>
+            <div class="multi-row">
+              <span class="tagline">₹10 notes</span>
+              <input type="number" inputmode="numeric" min="0" step="1" placeholder="0" data-note="10" />
             </div>
           </div>
-          <p class="form-error is-hidden" id="budgetError" role="alert"></p>
-          <button class="btn btn-primary btn-block" type="submit">Save budget 🌷</button>
+          <p class="multi-total">Total: <strong id="cashTotal">₹0.00</strong></p>
+          <button class="btn btn-primary btn-block" type="submit">Save counts 🌷</button>
         </form>
       </div>
 
@@ -446,7 +502,7 @@
 
       <div class="card danger-card">
         <h2 class="card-title">🧹 Fresh start</h2>
-        <p class="card-sub">Deletes every expense and IOU. The budget amount stays.</p>
+        <p class="card-sub">Deletes every expense and IOU. Your balance, cash counts, and card-cycle history stay.</p>
         <button class="btn btn-danger" type="button" id="resetBtn">Clear everything</button>
       </div>
 

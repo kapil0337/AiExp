@@ -1,16 +1,17 @@
 # 🌸 Bloom Budget
 
-A very pink, very cute expense tracker built for one person. Set a budget, log what
-you spend (cash / GPay / card, or a mix of all three), watch it come off the pot,
-track who still owes you money, and get roasted by a sassy AI money coach.
+A very pink, very cute expense tracker built for one person. No budget cap — just
+log what you spend (cash / GPay / card, or a mix of all three), keep a real account
+balance you edit by hand, track cash-in-hand and your credit card billing cycle,
+see who still owes you money, and get a sassy AI money coach's take on it all.
 
 Responsive down to a phone and up to a desktop, with an iPad-friendly middle.
 
 ```
 ┌─ Home ──────────┐  ┌─ Stats ─────────┐  ┌─ Owes me ───────┐
-│  ₹13,421 left   │  │ KPI row         │  │ owed to you     │
-│  ▓▓▓▓▓░░░░ 33%  │  │ payment split   │  │ you owe         │
-│  💅 Bloomie says│  │ daily columns   │  │ the ledger      │
+│  ₹13,421 balance│  │ KPI row         │  │ owed to you     │
+│  spent this mo. │  │ payment split   │  │ you owe         │
+│  💅 Bloomie says│  │ daily/monthly   │  │ the ledger      │
 │  quick add form │  │ by category     │  │ settle / undo   │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
@@ -21,13 +22,14 @@ Responsive down to a phone and up to a desktop, with an iPad-friendly middle.
 
 | Feature | Notes |
 |---|---|
-| **Budget pot** | One total amount, editable any time, six currencies |
-| **Expenses** | Name, emoji, category, note, date |
+| **Account balance** | One number that's actually yours — never resets monthly, edit it any time (rent in, rent out, whatever), six currencies |
+| **Expenses** | Name, emoji, category, note, date — spend tracking resets to the current calendar month, with a monthly-history chart for the trend |
 | **Three payment modes** | Tick cash / GPay / card. Tick more than one and you get a per-method amount box — one purchase can be split across all three |
-| **Auto-deduct** | Every expense comes straight off the remaining budget |
-| **Dashboard** | Spent per method (share-of-total bar), daily spend columns, category ranking, KPI row |
-| **Splits / IOUs** | "They owe me" and "I owe them", standalone or attached to an expense. Settling a `they_owe` puts the money back in the pot |
-| **Bloomie 💅** | An NVIDIA NIM model reads your numbers and delivers one funny verdict — hype or roast. Falls back to canned lines with no API key |
+| **Credit card cycle** | Card spend is tracked on its own 8th-to-8th cycle (not calendar month) and auto-deducted from your balance on the 26th — or settle a finished cycle early by hand |
+| **Cash in hand** | Track physical INR notes by denomination — informational, kept separate from the account balance |
+| **Dashboard** | Spent per method (share-of-total bar), daily spend columns, monthly history, category ranking, KPI row |
+| **Splits / IOUs** | "They owe me" and "I owe them", standalone or attached to an expense |
+| **Bloomie 💅** | An NVIDIA NIM model reads your numbers and delivers one funny, neutral-toned line — no verdict, just vibes. Falls back to canned lines with no API key |
 | **Extras** | Light/dark/auto theme, motion toggle, table view under every chart, PWA manifest, keyboard-accessible charts |
 
 ---
@@ -59,7 +61,7 @@ first run and serves the frontend from `/public` at the same origin.
 Run the tests:
 
 ```bash
-pytest -q          # 24 tests
+pytest -q          # 38 tests
 ruff check .
 ```
 
@@ -171,12 +173,12 @@ splits.
 
 `backend/ai.py` posts to NVIDIA's OpenAI-compatible endpoint
 (`https://integrate.api.nvidia.com/v1/chat/completions`) with the current
-budget state — percent used, top category, pace per day, who owes what — and asks
-for one short, funny verdict.
+numbers — account balance, spend this month, top category, pace per day, card
+cycle, who owes what — and asks for one short, funny, neutral-toned line.
 
 It is **fail-open by design**: no key, a timeout, a bad response, or a 500 all fall
-back to a canned line from the matching mood bucket. The bubble never shows an error,
-because a joke generator should never break a budgeting app.
+back to a canned line. The bubble never shows an error, because a joke generator
+should never break an expense tracker.
 
 Swap the model with `NVIDIA_MODEL`. Measured on this account (2026-08-24):
 
@@ -200,36 +202,46 @@ answer in `reasoning_content` instead of `content` (some Nemotron builds) fall b
 backend/
   config.py     settings from env (+ .env locally)
   database.py   engine, sessions, SQLite↔Postgres switching
-  models.py     User, Budget, Expense, Split — money is Numeric(12,2), never float
+  models.py     User, Budget, Expense, Split, CashHolding, CardCycleSettlement — money is Numeric(12,2), never float
   schemas.py    pydantic request/response shapes
   auth.py       Google token verification + signed session cookie
   ai.py         Bloomie, the NVIDIA-powered sass generator
+  cycles.py     8th-to-8th credit card cycle math + lazy settlement
   main.py       all /api routes + summary maths
 api/index.py    Vercel entrypoint (imports the same app)
 public/         index.html, styles.css, app.js — no build step, no dependencies
-tests/          24 end-to-end API tests
+tests/          38 end-to-end API tests + cycle unit tests
 ```
 
 ### How the money maths works
 
+There's no budget cap — `account_balance` is a number you set by hand (rent in,
+rent out, whatever), and it only otherwise moves when a credit card cycle
+auto-settles. Everything else in the summary (spend, by-method breakdown,
+biggest expense, top category) is scoped to the **current calendar month**;
+multi-month trend lives in the dashboard's monthly-history chart instead.
+
 ```
-remaining = total_budget − total_spent + recovered
-recovered = settled "they owe me"  −  settled "I owe them"
-
-remaining_if_everyone_pays = remaining + open "they owe me" − open "I owe them"
+remaining_if_everyone_pays = account_balance + open "they owe me" − open "I owe them"
+recovered = settled "they owe me" − settled "I owe them"   (bookkeeping only — doesn't touch the balance)
 ```
 
-An expense you split with a friend still leaves the pot immediately — you *did*
-pay for it. Their share only comes back when you mark the IOU settled.
+An expense you split with a friend is still fully your spend for the month —
+their share coming back is tracked via `recovered`, but (unlike the old
+budget-pot model) it no longer feeds back into any total automatically, since
+there's no pot for it to return to. Edit `account_balance` by hand once they
+actually pay you.
 
-Status ladder drives the colour, the emoji and Bloomie's tone:
+### Credit card cycle
 
-| % of budget used | status |
-|---|---|
-| < 50% | `comfy` 🌸 |
-| 50–84% | `watchful` ✨ |
-| 85–100% | `tight` 😬 |
-| > 100% | `overboard` 🚨 |
+Runs the 8th of one month to the 8th of the next (not a calendar month). The
+prior cycle's card spend auto-deducts from `account_balance` once its settle
+date (the 26th of the month the cycle ended in) has passed. There's no
+scheduler in this app, so settlement is lazy: it runs at the top of every
+summary read (`backend/cycles.py::run_auto_settlements`) and catches up on
+anything overdue, however late you next open the app. A "Settle now" button in
+Settings lets you close out an already-finished cycle early, without waiting
+for the 26th.
 
 ---
 
@@ -245,15 +257,19 @@ session and only ever sees the signed-in user's own budget.
 | `POST` | `/api/auth/google` | sign in with a Google ID token, sets the session cookie |
 | `POST` | `/api/auth/logout` | clear the session cookie |
 | `GET` | `/api/auth/me` | who's logged in, if anyone (never 401s) |
-| `GET` `PUT` | `/api/budget` | read / set the pot |
-| `POST` | `/api/budget/reset?keep_budget=true` | wipe expenses + IOUs |
-| `GET` `POST` | `/api/expenses` | list (filters: `q`, `method`, `category`) / create |
+| `GET` `PUT` | `/api/budget` | read / set the name + currency |
+| `PUT` | `/api/account-balance` | set the account balance |
+| `POST` | `/api/budget/reset` | wipe expenses + IOUs (balance, cash counts, card-cycle history stay) |
+| `GET` `PUT` | `/api/cash-holdings` | read / set cash-in-hand note counts |
+| `POST` | `/api/card-cycle/settle-now` | manually settle an already-finished credit card cycle early |
+| `GET` | `/api/card-cycle/history` | past settlements |
+| `GET` `POST` | `/api/expenses` | list (filters: `q`, `method`, `category`, `month`) / create |
 | `PATCH` `DELETE` | `/api/expenses/{id}` | edit / delete |
 | `GET` `POST` | `/api/splits` | list (filters: `settled`, `direction`) / create |
 | `PATCH` `DELETE` | `/api/splits/{id}` | settle, edit, delete |
 | `GET` | `/api/splits/people` | per-person rollup |
-| `GET` | `/api/summary` | just the numbers |
-| `GET` | `/api/dashboard?days=14` | summary + daily series + categories + recent |
+| `GET` | `/api/summary` | just the numbers (month-scoped) |
+| `GET` | `/api/dashboard?days=14` | summary + daily series + monthly history + categories + recent |
 | `POST` | `/api/vibe-check` | ask Bloomie |
 
 Interactive docs at `/docs` when running locally.
